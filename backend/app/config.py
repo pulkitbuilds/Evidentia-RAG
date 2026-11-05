@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # --- Storage ---
     chroma_persist_dir: str = "./data/chroma"
     collection_name: str = "ragnarok_corpus"
-    database_url: str = Field(default="sqlite:///./data/ragnarok.db")
+    database_url: str = "sqlite:///./data/ragnarok.db"
 
     # --- Retrieval ---
     top_k: int = 5

@@ -37,26 +37,53 @@ import os
 from sqlalchemy import Column, DateTime, Float, Integer, String, Text, create_engine, func
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from app.config import settings
+from __future__ import annotations
 
-_db_url = settings.database_url
-if _db_url.startswith("postgres://"):  # some hosts (Neon, Heroku) hand out the old scheme
-    _db_url = _db_url.replace("postgres://", "postgresql://", 1)
+import datetime as dt
+import json
+from pathlib import Path
 
-_is_sqlite = _db_url.startswith("sqlite")
-os.makedirs("./data", exist_ok=True)  # Chroma also persists under ./data
-
-# SQLite needs check_same_thread=False for FastAPI's threadpool; Postgres
-# drivers reject that argument, and benefit from pool_pre_ping on hosted DBs
-# that drop idle connections.
-engine = create_engine(
-    _db_url,
-    connect_args={"check_same_thread": False} if _is_sqlite else {},
-    pool_pre_ping=not _is_sqlite,
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    func,
 )
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-Base = declarative_base()
+from sqlalchemy.orm import declarative_base, sessionmaker
 
+
+# ============================================================
+# SQLITE DATABASE CONFIGURATION
+# ============================================================
+
+# Always use SQLite. No PostgreSQL connection is required.
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+DATA_DIR = BACKEND_DIR / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+DB_PATH = DATA_DIR / "ragnarok.db"
+
+DATABASE_URL = f"sqlite:///{DB_PATH.as_posix()}"
+
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={
+        "check_same_thread": False
+    },
+)
+
+SessionLocal = sessionmaker(
+    bind=engine,
+    autoflush=False,
+    autocommit=False,
+)
+
+Base = declarative_base()
 
 class UserRow(Base):
     __tablename__ = "users"
