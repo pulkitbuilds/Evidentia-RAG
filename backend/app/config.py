@@ -2,6 +2,7 @@
 Central configuration for RAGnarok backend.
 Loads from environment variables / .env via pydantic-settings.
 """
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,7 +22,7 @@ class Settings(BaseSettings):
     # --- Storage ---
     chroma_persist_dir: str = "./data/chroma"
     collection_name: str = "ragnarok_corpus"
-    database_url: str = "sqlite:///./data/ragnarok.db"
+    database_url: str = Field(default="sqlite:///./data/ragnarok.db")
 
     # --- Retrieval ---
     top_k: int = 5
@@ -47,13 +48,9 @@ class Settings(BaseSettings):
 
     # --- Server ---
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
-    # Optional regex, e.g. https://evidentia-.*\\.vercel\\.app to also allow Vercel preview URLs
     cors_origin_regex: str = ""
 
     # --- Auth ---
-    # CHANGE THIS in your .env for any real deployment -- this default is only
-    # safe for local, single-machine use. Anyone who knows this secret can
-    # forge login tokens for any user.
     jwt_secret: str = "change-this-secret-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 1 week
