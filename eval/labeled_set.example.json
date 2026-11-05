@@ -1,0 +1,8 @@
+[
+  {"sentence": "RAGnarok uses BAAI/bge-small-en-v1.5 to generate embeddings.", "expected": "supported"},
+  {"sentence": "RAGnarok's frontend is built with Angular.", "expected": "contradicted"},
+  {"sentence": "RAGnarok was first released in 1997.", "expected": "unverified"},
+  {"sentence": "The classification step uses an NVIDIA NIM model via an OpenAI-compatible API.", "expected": "supported"},
+  {"sentence": "Sparse search in RAGnarok uses BM25Okapi from rank-bm25.", "expected": "supported"},
+  {"sentence": "The eval harness is written in Rust.", "expected": "contradicted"}
+]

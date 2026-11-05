@@ -1,0 +1,17 @@
+# Dependencies for the Streamlit edition (streamlit_app.py).
+# Deliberately NO torch / sentence-transformers: embeddings come from NVIDIA's API.
+# The React/FastAPI version uses backend/requirements.txt instead.
+streamlit>=1.40
+pydantic>=2.7
+pydantic-settings>=2.3
+chromadb>=0.5
+pysqlite3-binary; sys_platform == "linux"
+rank-bm25>=0.2.2
+openai>=1.40
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+requests>=2.31
+beautifulsoup4>=4.12
+duckduckgo-search>=6.0
+PyJWT>=2.8
+python-dotenv>=1.0

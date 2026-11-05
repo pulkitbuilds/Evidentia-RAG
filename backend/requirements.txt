@@ -1,0 +1,15 @@
+fastapi>=0.111
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pydantic-settings>=2.3
+chromadb>=0.5
+sentence-transformers>=3.0
+rank-bm25>=0.2.2
+openai>=1.40
+sqlalchemy>=2.0
+python-dotenv>=1.0
+requests>=2.31
+beautifulsoup4>=4.12
+duckduckgo-search>=6.0
+PyJWT>=2.8
+psycopg2-binary>=2.9  # only used if DATABASE_URL points at Postgres
