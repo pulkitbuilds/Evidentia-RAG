@@ -41,7 +41,19 @@ class NvidiaEmbedder:
     def __init__(self, model: str, api_key: str, base_url: str) -> None:
         from openai import OpenAI
 
-        self._client = OpenAI(api_key=api_key, base_url=base_url)
+        if not api_key or not api_key.strip():
+            raise ValueError(
+                "NVIDIA_API_KEY is missing. "
+                "Configure NVIDIA_API_KEY in Streamlit Cloud Secrets."
+            )
+
+        if not base_url or not base_url.strip():
+            raise ValueError("NVIDIA_BASE_URL is missing.")
+
+        self._client = OpenAI(
+            api_key=api_key.strip(),
+            base_url=base_url.strip(),
+        )
         self._model = model
 
     def _embed(self, texts: list[str], input_type: str) -> list[list[float]]:
