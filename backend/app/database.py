@@ -28,17 +28,6 @@ database file. The `users` table and the `cases.user_id` column added
 alongside login are exactly this kind of change -- delete `backend/data/`
 before running this version for the first time.
 """
-from __future__ import annotations
-
-import datetime as dt
-import json
-import os
-
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, create_engine, func
-from sqlalchemy.orm import declarative_base, sessionmaker
-
-from __future__ import annotations
-
 import datetime as dt
 import json
 from pathlib import Path
