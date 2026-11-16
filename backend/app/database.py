@@ -1,5 +1,6 @@
 """
-Persistent storage: SQLite via SQLAlchemy.
+Persistent storage: Postgres (Supabase) via SQLAlchemy. Falls back to SQLite
+for local dev when DATABASE_URL is a sqlite:// URL.
 
 Five tables:
   users         - registered accounts. Every case belongs to exactly one user.
@@ -21,12 +22,9 @@ BM25 index (and re-sync Chroma) for every case from whatever is in the
 source of truth for "what's in a case's corpus."
 
 NOTE ON SCHEMA CHANGES: this project has no migration system (no Alembic).
-Every time a change adds a column to an EXISTING table (as opposed to adding
-a whole new table), delete `backend/data/` entirely before starting the
-backend again, or you'll hit "no such column" errors against your old
-database file. The `users` table and the `cases.user_id` column added
-alongside login are exactly this kind of change -- delete `backend/data/`
-before running this version for the first time.
+The tables are created by supabase_schema.sql (or by init_db() as a fallback).
+init_db() never alters existing tables, so when you add a column, run an
+ALTER TABLE in the Supabase SQL Editor and update the model below to match.
 """
 import datetime as dt
 import json
@@ -43,28 +41,54 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.pool import NullPool
+
+from app.config import settings
 
 
 # ============================================================
-# SQLITE DATABASE CONFIGURATION
+# DATABASE CONFIGURATION  (driven by DATABASE_URL in backend/.env)
 # ============================================================
 
-# Always use SQLite. No PostgreSQL connection is required.
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
+# ChromaDB still persists here, so keep the folder even when using Postgres.
 DATA_DIR = BACKEND_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-DB_PATH = DATA_DIR / "ragnarok.db"
+DATABASE_URL = settings.database_url.strip()
 
-DATABASE_URL = f"sqlite:///{DB_PATH.as_posix()}"
+# Supabase / Heroku-style URLs use postgres:// or postgresql://.
+# SQLAlchemy needs the driver name to pick psycopg v3 (psycopg[binary]).
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={
-        "check_same_thread": False
-    },
-)
+IS_SQLITE = DATABASE_URL.startswith("sqlite")
+
+if IS_SQLITE:
+    # Resolve the default relative path against backend/, not the cwd.
+    if DATABASE_URL.startswith("sqlite:///./"):
+        DATABASE_URL = f"sqlite:///{(BACKEND_DIR / DATABASE_URL[len('sqlite:///./'):]).as_posix()}"
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+elif ":6543" in DATABASE_URL:
+    # Supabase transaction pooler (serverless, e.g. Vercel): no prepared
+    # statements, and let the pooler own the connections.
+    engine = create_engine(
+        DATABASE_URL,
+        poolclass=NullPool,
+        connect_args={"prepare_threshold": None},
+    )
+else:
+    # Supabase session pooler (port 5432) or direct connection.
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=5,
+        pool_recycle=1800,
+    )
 
 SessionLocal = sessionmaker(
     bind=engine,
