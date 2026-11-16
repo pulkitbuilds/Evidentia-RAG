@@ -369,7 +369,7 @@ def append_research_log(job_id: str, message: str) -> None:
         if not row:
             return
         row.log = (row.log + "\n" + message) if row.log else message
-        row.updated_at = dt.datetime.utcnow()
+        row.updated_at = dt.datetime.now(dt.UTC)
         session.commit()
 
 
