@@ -43,7 +43,7 @@ import xml.etree.ElementTree as ET
 
 import requests
 from bs4 import BeautifulSoup
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 from openai import OpenAI
 
 from app import database
