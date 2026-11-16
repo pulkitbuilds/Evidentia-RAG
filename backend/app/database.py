@@ -2,15 +2,15 @@
 Persistent storage: SQLite via SQLAlchemy.
 
 Five tables:
-  users          - registered accounts. Every case belongs to exactly one user.
-  cases          - your separate projects/case files (e.g. "Q3 Report",
+  users         - registered accounts. Every case belongs to exactly one user.
+  cases         - your separate projects/case files (e.g. "Q3 Report",
                    "Thesis Ch. 2"), scoped to the user who created them.
                    Everything below belongs to exactly one case.
-  documents      - every source document ever ingested, scoped to a case.
+  documents     - every source document ever ingested, scoped to a case.
                    This is the durable "source of truth" for a case's corpus.
-  claim_checks   - a running log of every sentence ever checked and its
+  claim_checks  - a running log of every sentence ever checked and its
                    verdict, scoped to a case.
-  research_jobs  - a log of autonomous research runs (topic -> web search ->
+  research_jobs - a log of autonomous research runs (topic -> web search ->
                    fetched sources -> drafted paragraph), scoped to a case.
 
 Chunks themselves are *derived* from `documents` (via chunking.py) and live in
@@ -74,13 +74,14 @@ SessionLocal = sessionmaker(
 
 Base = declarative_base()
 
+
 class UserRow(Base):
     __tablename__ = "users"
 
     id = Column(String, primary_key=True)
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
-    created_at = Column(DateTime, default=dt.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: dt.datetime.now(dt.UTC))
 
 
 class CaseRow(Base):
@@ -89,7 +90,7 @@ class CaseRow(Base):
     id = Column(String, primary_key=True)
     user_id = Column(String, index=True, nullable=False)
     name = Column(String, nullable=False)
-    created_at = Column(DateTime, default=dt.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: dt.datetime.now(dt.UTC))
 
 
 class DocumentRow(Base):
@@ -100,7 +101,7 @@ class DocumentRow(Base):
     title = Column(String, nullable=False)
     text = Column(Text, nullable=False)
     chunk_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=dt.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: dt.datetime.now(dt.UTC))
 
 
 class ClaimCheckRow(Base):
@@ -114,7 +115,7 @@ class ClaimCheckRow(Base):
     best_doc_title = Column(String, nullable=True)
     best_evidence_text = Column(Text, nullable=True)
     merged_score = Column(Float, nullable=True)
-    created_at = Column(DateTime, default=dt.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: dt.datetime.now(dt.UTC))
 
 
 class ResearchJobRow(Base):
@@ -128,8 +129,8 @@ class ResearchJobRow(Base):
     draft_text = Column(Text, nullable=True)
     sources_json = Column(Text, nullable=True)  # json list of {doc_id, title, url}
     error = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=dt.datetime.utcnow)
-    updated_at = Column(DateTime, default=dt.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: dt.datetime.now(dt.UTC))
+    updated_at = Column(DateTime, default=lambda: dt.datetime.now(dt.UTC), onupdate=lambda: dt.datetime.now(dt.UTC))
 
 
 def init_db() -> None:
@@ -392,7 +393,7 @@ def update_research_job(
             row.sources_json = json.dumps(sources)
         if error is not None:
             row.error = error
-        row.updated_at = dt.datetime.utcnow()
+        row.updated_at = dt.datetime.now(dt.UTC)
         session.commit()
 
 
