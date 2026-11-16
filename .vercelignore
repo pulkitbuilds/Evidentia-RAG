@@ -1,0 +1,17 @@
+# Ignore local virtual environments
+backend/.venv/
+backend/venv/
+.venv/
+venv/
+
+# Ignore local vector databases and large data files
+data/
+backend/data/
+*.sqlite3
+
+# Ignore caches, tests, and evaluation scripts
+__pycache__/
+.pytest_cache/
+eval/
+.git/
+.github/
