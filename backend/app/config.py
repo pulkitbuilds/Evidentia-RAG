@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # --- Embeddings ---
     embedding_provider: str = "local"  # "local" (sentence-transformers) or "nvidia" (hosted, no PyTorch)
-    embedding_model_name: str = "bge-m3"  # used when provider=local
+    embedding_model_name: str = "BAAI/bge-small-en-v1.5"  # used when provider=local
     nvidia_embedding_model: str = "nvidia/nemotron-3.5-embed-1b"  # used when provider=nvidia
 
     # --- Storage ---
