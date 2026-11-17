@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # --- Storage ---
     chroma_persist_dir: str = "./data/chroma"
     collection_name: str = "ragnarok_corpus"
-    database_url: str = "postgresql+psycopg://postgres.tadvgrahbeyxmoiyztsv:Pulkit%40031005@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres"
+    database_url: str = "postgresql://postgres.xnpyavwkjspmrqlkffnb:AUbqfA%239NsU8kwR@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
 
     # --- Retrieval ---
     top_k: int = 5
