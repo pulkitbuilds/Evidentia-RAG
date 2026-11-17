@@ -1,4 +1,4 @@
-m3"""
+"""
 Central configuration for RAGnarok backend.
 Loads from environment variables / .env via pydantic-settings.
 """
