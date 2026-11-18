@@ -1,11 +1,3 @@
-"""
-LLM Judge (via NVIDIA NIM): decides whether a claim is SUPPORTED, CONTRADICTED,
-or UNVERIFIED by the retrieved evidence chunks.
-
-NVIDIA's NIM API (https://integrate.api.nvidia.com/v1) is OpenAI-compatible,
-so we talk to it with the standard `openai` SDK, just pointed at a different
-base_url and using an NVIDIA-hosted model id (e.g. "meta/llama-3.1-70b-instruct").
-"""
 from __future__ import annotations
 
 import json
