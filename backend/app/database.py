@@ -1,31 +1,3 @@
-"""
-Persistent storage: Postgres (Supabase) via SQLAlchemy. Falls back to SQLite
-for local dev when DATABASE_URL is a sqlite:// URL.
-
-Five tables:
-  users         - registered accounts. Every case belongs to exactly one user.
-  cases         - your separate projects/case files (e.g. "Q3 Report",
-                   "Thesis Ch. 2"), scoped to the user who created them.
-                   Everything below belongs to exactly one case.
-  documents     - every source document ever ingested, scoped to a case.
-                   This is the durable "source of truth" for a case's corpus.
-  claim_checks  - a running log of every sentence ever checked and its
-                   verdict, scoped to a case.
-  research_jobs - a log of autonomous research runs (topic -> web search ->
-                   fetched sources -> drafted paragraph), scoped to a case.
-
-Chunks themselves are *derived* from `documents` (via chunking.py) and live in
-ChromaDB + an in-memory BM25 index, one pair of indexes per case. rank_bm25
-has no persistence of its own, so on every backend startup we rebuild the
-BM25 index (and re-sync Chroma) for every case from whatever is in the
-`documents` table here. That's why `documents` -- not Chroma -- is the real
-source of truth for "what's in a case's corpus."
-
-NOTE ON SCHEMA CHANGES: this project has no migration system (no Alembic).
-The tables are created by supabase_schema.sql (or by init_db() as a fallback).
-init_db() never alters existing tables, so when you add a column, run an
-ALTER TABLE in the Supabase SQL Editor and update the model below to match.
-"""
 import datetime as dt
 import json
 from pathlib import Path
