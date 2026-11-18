@@ -1,18 +1,3 @@
-"""
-RAGnarok backend entrypoint.
-
-    Source Corpus -> chunk -> Embed+Index -> Hybrid Retrieval -> LLM Judge -> Verdict
-
-Everything above happens *within a case* -- a case is a separate project
-(e.g. "Q3 Report", "Thesis Ch. 2") with its own corpus, its own search index,
-and its own history -- and every case belongs to exactly one logged-in user.
-SQLite (app/database.py) is the durable source of truth for users, cases,
-documents, and checks: everything is saved there, and on startup each case's
-search index (Chroma + BM25) is rebuilt from it, so it all survives a server
-restart.
-
-Run with:  uvicorn app.main:app --reload
-"""
 import datetime as dt
 import uuid
 
