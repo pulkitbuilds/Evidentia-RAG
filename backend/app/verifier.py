@@ -1,25 +1,3 @@
-"""
-Source verifier: checks whether a given URL or DOI looks like a genuine,
-traceable publication (paper, conference paper, patent, article) rather than
-assessing "truth" of its content -- that's what the claim classifier does.
-This checks *provenance*: does this actually exist in a real index, who
-published it, can anything about it be confirmed independently.
-
-Deliberately conservative in its language: this can raise confidence or flag
-a lack of verifiable signals, but it does NOT accuse a source of being fake.
-A source with no DOI and an unfamiliar domain might be completely legitimate
-(a company blog, a government report with no DOI) -- we say "unverified",
-never "fake", because we have no reliable way to prove fraud, only to
-confirm or fail to confirm identity.
-
-Two real signals are used, both via free, keyless public APIs:
-  1. CrossRef (https://api.crossref.org) -- the registry academic publishers
-     use to register DOIs. If a DOI resolves here with matching metadata,
-     that's strong evidence the source is a real, registered publication.
-  2. Domain reputation -- a short allow-list of well-known scholarly/
-     government/standards domains (arXiv, major publishers, .gov, .edu,
-     patent offices). This is a heuristic, not a determination.
-"""
 from __future__ import annotations
 
 import re
