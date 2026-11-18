@@ -1,19 +1,3 @@
-"""
-Authentication helpers: password hashing and JWT access tokens.
-
-Password hashing uses Python's built-in `hashlib.pbkdf2_hmac` (PBKDF2-HMAC-SHA256,
-600,000 iterations per OWASP's current minimum recommendation) rather than
-bcrypt/argon2. This is a deliberate simplicity trade-off for a project meant
-to be easy to `pip install` on any machine (bcrypt needs a compiled C
-extension, which occasionally causes install headaches on Windows) -- PBKDF2
-via the standard library needs nothing extra. It's meaningfully weaker than
-argon2id against a determined, well-resourced attacker with the hash in hand,
-but is a reasonable choice for a local/small-scale tool. If you deploy this
-somewhere with real adversaries, swap this module for `passlib[argon2]`.
-
-JWT access tokens (via PyJWT) carry the user's id as `sub` and an expiry;
-the frontend sends them back as `Authorization: Bearer <token>`.
-"""
 from __future__ import annotations
 
 import datetime as dt
