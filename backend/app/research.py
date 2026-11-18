@@ -1,38 +1,3 @@
-"""
-Autonomous research assistant.
-
-Given a topic/question, this module:
-  1. asks the NVIDIA LLM to expand it into a handful of diverse search queries
-  2. runs each query against general web search (DuckDuckGo) AND three free,
-     keyless academic archives -- arXiv (papers/preprints), CrossRef
-     (published papers and conference papers, via their DOI registry), and
-     best-effort PatentsView (US patents)
-  3. fetches and cleans the resulting pages (arXiv abstracts are used
-     directly from its API response rather than re-fetched, since that's
-     more reliable than scraping the abstract page)
-  4. ingests the cleaned pages straight into the case's corpus, exactly like a
-     manually pasted document -- they go through the same chunking, the same
-     hybrid retriever, the same SQLite persistence
-  5. asks the LLM to draft a short paragraph on the topic, grounded ONLY in
-     what was just fetched
-
-This closes the loop between "Evidentia checks what you write" and "Evidentia
-can go find you something to write from" -- the draft it produces is meant as
-a *starting point*, not a finished answer: dropping it into the editor runs it
-back through the normal claim-by-claim verification the rest of the app does.
-The classifier itself isn't "trained" on these sources in any machine-learning
-sense (no fine-tuning happens here) -- the sources become part of the case's
-corpus, which is how a RAG system "learns" more: a bigger, better corpus to
-retrieve from and judge claims against.
-
-Runs as a FastAPI BackgroundTask (see app/main.py); progress and results are
-written to SQLite as it goes (via app/database.py) so the frontend can poll a
-job's status instead of holding a single long-lived HTTP request open.
-
-Swappable web search: `web_search()` below is the one function you'd replace
-to use a different provider (Tavily, Serper, Bing, etc.) instead of
-DuckDuckGo -- everything else in this module only depends on its return shape.
-"""
 from __future__ import annotations
 
 import json
