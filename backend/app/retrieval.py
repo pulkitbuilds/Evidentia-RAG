@@ -1,28 +1,3 @@
-"""
-Hybrid retrieval: dense (ChromaDB / cosine over sentence-transformer embeddings)
-merged with sparse (BM25Okapi keyword search):
-
-    Dense Search (Chroma / cosine)      Sparse Search (BM25 / keyword)
-                    \\                          /
-                     merge + normalize + weight
-                                |
-                       Hybrid Retrieval (top-k)
-
-Multi-case note: each case file gets its own isolated search index (its own
-Chroma collection and its own in-memory BM25 index), so documents in one case
-never leak into another case's retrieval results. The embedding model itself
-(~130MB, slow to load) and the Chroma client/connection are expensive to set
-up, so those are shared across every case via `RetrieverRegistry` -- only the
-lightweight per-case index state (`HybridRetriever`) is duplicated.
-
-Persistence note: Chroma's data lives on disk (settings.chroma_persist_dir)
-and survives restarts on its own. rank_bm25, however, is a pure in-memory
-index with no persistence -- so on every backend startup we rebuild BOTH the
-in-memory chunk list and the BM25 index, per case, from SQLite (via
-`rebuild_from_documents`, called once per case at startup in main.py). SQLite
-is the real source of truth for "what's in each case's corpus"; Chroma and
-BM25 are just derived search indexes over it.
-"""
 from __future__ import annotations
 
 import re
