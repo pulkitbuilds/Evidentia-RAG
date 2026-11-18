@@ -1,15 +1,3 @@
-"""
-Embedding backends, selected by EMBEDDING_PROVIDER:
-
-  local   - sentence-transformers (BAAI/bge-small-en-v1.5 by default). Needs
-            PyTorch, which is several GB and too heavy for some hosts.
-  nvidia  - NVIDIA NIM's OpenAI-compatible /embeddings endpoint. No PyTorch,
-            no model download; the same NVIDIA_API_KEY used for the judge.
-
-Both return L2-normalised vectors, so cosine similarity in Chroma behaves the
-same either way. Vectors from different providers have different sizes and
-must never share a Chroma collection (see collection naming in retrieval.py).
-"""
 from __future__ import annotations
 
 import math
