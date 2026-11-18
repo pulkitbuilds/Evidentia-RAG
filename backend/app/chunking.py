@@ -1,12 +1,3 @@
-"""
-Lightweight sentence-level chunker.
-
-We deliberately avoid a heavy NLP dependency (spaCy/NLTK punkt download requires
-network access at first run) and instead use a robust regex-based splitter with
-a few guards for common abbreviations. Chunks are groups of `max_chunk_sentences`
-consecutive sentences, so a claim's local context (e.g. a trailing clause) is
-still retrievable.
-"""
 import re
 from dataclasses import dataclass
 
