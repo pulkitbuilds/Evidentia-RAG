@@ -13,7 +13,7 @@ RUN pip install torch --index-url https://download.pytorch.org/whl/cpu \
  && pip install -r requirements.txt
 
 # Bake the embedding model into the image so cold starts don't re-download ~130MB
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5')"
+RUN python -c "from sentence_transformers import SentenceTransformer"
 
 COPY app ./app
 RUN mkdir -p data && chown -R appuser:appuser /app
