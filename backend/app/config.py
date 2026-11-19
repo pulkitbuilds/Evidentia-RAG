@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # --- Embeddings ---
     embedding_provider: str = "nvidia"  # "local" (sentence-transformers) or "nvidia" (hosted, no PyTorch)
-    nvidia_embedding_model: str = "baai/bge-m3"  # used when provider=nvidia
+    nvidia_embedding_model: str = "nvidia/nemotron-3.5-embed-1b"  # used when provider=nvidia
 
     # --- Storage ---
     chroma_persist_dir: str = "./data/chroma"
