@@ -12,11 +12,11 @@ class Settings(BaseSettings):
     # --- NVIDIA NIM (OpenAI-compatible) ---
     nvidia_api_key: str = ""
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
-    nvidia_model: str = "meta/llama-3.1-8b-instruct"
+    nvidia_model: str = "qwen/qwen2.5-coder-32b-instruct"
 
     # --- Embeddings ---
     embedding_provider: str = "nvidia"  # "local" (sentence-transformers) or "nvidia" (hosted, no PyTorch)
-    nvidia_embedding_model: str = "nvidia/nemotron-3.5-embed-1b"  # used when provider=nvidia
+    nvidia_embedding_model: str = "nvidia/nemotron-3.5-rerank-8b"  # used when provider=nvidia
 
     # --- Storage ---
     chroma_persist_dir: str = "./data/chroma"
