@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 
+    # --- Gemini fallback (used when NVIDIA call fails) ---
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+
     # --- Embeddings ---
     embedding_provider: str = "local"  # "local" (sentence-transformers) or "nvidia" (hosted, no PyTorch)
     embedding_model_name: str = "BAAI/bge-small-en-v1.5"  # used when provider=local

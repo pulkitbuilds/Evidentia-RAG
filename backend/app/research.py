@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import urllib.parse
 import uuid
@@ -15,6 +16,8 @@ from app import database
 from app.chunking import chunk_document
 from app.config import settings
 from app.retrieval import get_retriever
+
+logger = logging.getLogger(__name__)
 
 _USER_AGENT = "Evidentia-ResearchBot/1.0 (evidence-first research assistant)"
 
@@ -44,6 +47,22 @@ def _nvidia_client() -> OpenAI:
     return OpenAI(api_key=settings.nvidia_api_key, base_url=settings.nvidia_base_url)
 
 
+def _gemini_generate(system_prompt: str, user_prompt: str, max_tokens: int = 500, temperature: float = 0.3) -> str:
+    """Call Gemini as a fallback LLM. Returns raw text or raises on failure."""
+    import google.generativeai as genai  # lazy import -- only needed on fallback
+
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel(
+        model_name=settings.gemini_model,
+        system_instruction=system_prompt,
+    )
+    response = model.generate_content(
+        user_prompt,
+        generation_config={"temperature": temperature, "max_output_tokens": max_tokens},
+    )
+    return (response.text or "").strip()
+
+
 def _parse_json_object(raw_text: str) -> dict | None:
     cleaned = raw_text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
@@ -54,7 +73,11 @@ def _parse_json_object(raw_text: str) -> dict | None:
 
 def expand_queries(topic: str) -> list[str]:
     """Turns a topic into up to `research_max_queries` distinct search queries.
-    Falls back to just [topic] if the LLM call or parsing fails."""
+    Tries NVIDIA first; falls back to Gemini; falls back to [topic] if both fail.
+    """
+    system_prompt = _QUERY_EXPANSION_PROMPT % settings.research_max_queries
+
+    # --- Try NVIDIA ---
     try:
         client = _nvidia_client()
         response = client.chat.completions.create(
@@ -62,7 +85,7 @@ def expand_queries(topic: str) -> list[str]:
             max_tokens=250,
             temperature=0.3,
             messages=[
-                {"role": "system", "content": _QUERY_EXPANSION_PROMPT % settings.research_max_queries},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": topic},
             ],
         )
@@ -71,8 +94,19 @@ def expand_queries(topic: str) -> list[str]:
         queries = parsed.get("queries") if parsed else None
         if isinstance(queries, list) and queries:
             return [str(q).strip() for q in queries if str(q).strip()][: settings.research_max_queries]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("NVIDIA expand_queries failed (%s); falling back to Gemini.", exc)
+
+    # --- Gemini fallback ---
+    try:
+        raw_text = _gemini_generate(system_prompt, topic, max_tokens=250, temperature=0.3)
+        parsed = _parse_json_object(raw_text)
+        queries = parsed.get("queries") if parsed else None
+        if isinstance(queries, list) and queries:
+            return [str(q).strip() for q in queries if str(q).strip()][: settings.research_max_queries]
+    except Exception as exc:
+        logger.error("Gemini expand_queries fallback also failed: %s", exc)
+
     return [topic]
 
 
@@ -269,11 +303,16 @@ def fetch_readable_text(url: str) -> tuple[str | None, str | None]:
 
 def draft_from_evidence(topic: str, sources: list[dict]) -> str:
     """sources: [{title, text}, ...] (already-ingested pages). Returns a short
-    grounded draft paragraph, or a fallback message if drafting fails."""
+    grounded draft paragraph, or a fallback message if drafting fails.
+    Tries NVIDIA first; falls back to Gemini if NVIDIA is unavailable or errors.
+    """
     if not sources:
         return "No usable sources were found to draft from."
 
     evidence_block = "\n\n".join(f"[{i}] ({s['title']}) {s['text'][:800]}" for i, s in enumerate(sources))
+    user_prompt = f"TOPIC: {topic}\n\nEVIDENCE:\n{evidence_block}"
+
+    # --- Try NVIDIA ---
     try:
         client = _nvidia_client()
         response = client.chat.completions.create(
@@ -282,12 +321,19 @@ def draft_from_evidence(topic: str, sources: list[dict]) -> str:
             temperature=0.2,
             messages=[
                 {"role": "system", "content": _DRAFT_PROMPT},
-                {"role": "user", "content": f"TOPIC: {topic}\n\nEVIDENCE:\n{evidence_block}"},
+                {"role": "user", "content": user_prompt},
             ],
         )
         return (response.choices[0].message.content or "").strip()
     except Exception as exc:
-        return f"(Drafting failed: {exc})"
+        logger.warning("NVIDIA draft_from_evidence failed (%s); falling back to Gemini.", exc)
+
+    # --- Gemini fallback ---
+    try:
+        return _gemini_generate(_DRAFT_PROMPT, user_prompt, max_tokens=500, temperature=0.2)
+    except Exception as exc:
+        logger.error("Gemini draft_from_evidence fallback also failed: %s", exc)
+        return f"(Drafting failed: both NVIDIA and Gemini are unavailable — {exc})"
 
 
 def run_research_job(job_id: str, case_id: str, topic: str) -> None:
