@@ -9,20 +9,23 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    # --- LLM Provider Selection ---
+    llm_provider: str = "auto"  # "auto" (tries nvidia then gemini), "nvidia", or "gemini"
+
     # --- NVIDIA NIM (OpenAI-compatible) ---
     nvidia_api_key: str = ""
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
-    nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    nvidia_model: str = "meta/llama-3.1-70b-instruct"  # stable, widely available model
 
-    # --- Gemini fallback (used when NVIDIA call fails) ---
+    # --- Gemini (primary or fallback) ---
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "gemini-2.0-flash"
+    gemini_embedding_model: str = "models/text-embedding-004"
 
     # --- Embeddings ---
-    embedding_provider: str = "local"  # "local" (sentence-transformers) or "nvidia" (hosted, no PyTorch)
+    embedding_provider: str = "local"  # "local" (sentence-transformers), "gemini", or "nvidia"
     embedding_model_name: str = "BAAI/bge-small-en-v1.5"  # used when provider=local
-    nvidia_embedding_model: str = "nvidia/nemotron-3.5-embed-1b"  # used when provider=nvidia
-
+    nvidia_embedding_model: str = "nvidia/nv-embedqa-e5-v5"  # used when provider=nvidia
     # --- Storage ---
     chroma_persist_dir: str = "./data/chroma"
     collection_name: str = "ragnarok_corpus"

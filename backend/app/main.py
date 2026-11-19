@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app import auth, database, research, verifier
-from app.chunking import chunk_document
 from app.classifier import classify_claim
 from app.config import settings
 from app.models import (
@@ -176,15 +175,18 @@ def ingest_corpus(case_id: str, request: IngestRequest, current_user: dict = Dep
         raise HTTPException(status_code=400, detail="No documents provided.")
 
     retriever = get_retriever(case_id)
-    docs = [(d.id, d.title, d.text) for d in request.documents]
-    chunks_indexed = retriever.add_documents(docs)
-
-    # Persist to SQLite so this document survives a backend restart.
+    total_chunks = 0
     for d in request.documents:
-        n_chunks = len(chunk_document(d.id, d.title, d.text, settings.max_chunk_sentences))
+        # Chunk count comes from add_documents — no need to re-chunk separately.
+        try:
+            n_chunks = retriever.add_documents([(d.id, d.title, d.text)])
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Embedding failed for '{d.title}': {exc}. Check EMBEDDING_PROVIDER and API keys.")
+        # Persist to DB so the document survives a backend restart.
         database.save_document(case_id, d.id, d.title, d.text, n_chunks)
+        total_chunks += n_chunks
 
-    return IngestResponse(documents_ingested=len(request.documents), chunks_indexed=chunks_indexed)
+    return IngestResponse(documents_ingested=len(request.documents), chunks_indexed=total_chunks)
 
 
 @app.get("/cases/{case_id}/corpus/status", response_model=CorpusStatus)

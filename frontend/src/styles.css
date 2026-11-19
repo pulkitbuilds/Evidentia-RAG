@@ -159,6 +159,17 @@ body {
   margin-bottom: 18px;
 }
 
+.banner-info {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: #e8f0fb;
+  color: #1a4fa0;
+  border: 1px solid #aac4f0;
+  padding: 10px 14px;
+  border-radius: 3px;
+  margin-bottom: 18px;
+}
+
 /* ---------------- Grid ---------------- */
 
 .app-grid {
@@ -231,6 +242,7 @@ h3.preview-label {
   color: var(--ink-soft);
 }
 .file-upload input { display: block; margin-top: 8px; font-family: var(--font-body); }
+.file-upload.disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
 
 .divider {
   text-align: center;

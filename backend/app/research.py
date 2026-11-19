@@ -71,43 +71,69 @@ def _parse_json_object(raw_text: str) -> dict | None:
         return None
 
 
+def _template_queries(topic: str, n: int) -> list[str]:
+    """Zero-latency fallback: generate reasonable search queries from templates.
+    Used when both NVIDIA and Gemini are unavailable or too slow.
+    """
+    templates = [
+        topic,
+        f"{topic} overview guide",
+        f"{topic} best practices tutorial",
+        f"{topic} use cases examples",
+        f"how {topic} works architecture",
+        f"{topic} getting started documentation",
+        f"{topic} vs alternatives comparison",
+    ]
+    return templates[:n]
+
+
 def expand_queries(topic: str) -> list[str]:
     """Turns a topic into up to `research_max_queries` distinct search queries.
-    Tries NVIDIA first; falls back to Gemini; falls back to [topic] if both fail.
+    Priority: NVIDIA (5s timeout) → Gemini (5s timeout) → instant template fallback.
     """
-    system_prompt = _QUERY_EXPANSION_PROMPT % settings.research_max_queries
+    n = settings.research_max_queries
+    system_prompt = _QUERY_EXPANSION_PROMPT % n
 
-    # --- Try NVIDIA ---
+    def _parse_queries(raw: str) -> list[str] | None:
+        parsed = _parse_json_object(raw)
+        queries = parsed.get("queries") if parsed else None
+        if isinstance(queries, list) and queries:
+            return [str(q).strip() for q in queries if str(q).strip()][:n]
+        return None
+
+    # --- Try NVIDIA (strict 5s timeout) ---
     try:
         client = _nvidia_client()
         response = client.chat.completions.create(
             model=settings.nvidia_model,
             max_tokens=250,
             temperature=0.3,
+            timeout=5.0,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": topic},
             ],
         )
-        raw_text = response.choices[0].message.content or ""
-        parsed = _parse_json_object(raw_text)
-        queries = parsed.get("queries") if parsed else None
-        if isinstance(queries, list) and queries:
-            return [str(q).strip() for q in queries if str(q).strip()][: settings.research_max_queries]
+        result = _parse_queries(response.choices[0].message.content or "")
+        if result:
+            return result
     except Exception as exc:
         logger.warning("NVIDIA expand_queries failed (%s); falling back to Gemini.", exc)
 
-    # --- Gemini fallback ---
+    # --- Gemini fallback (strict 5s timeout via concurrent.futures) ---
     try:
-        raw_text = _gemini_generate(system_prompt, topic, max_tokens=250, temperature=0.3)
-        parsed = _parse_json_object(raw_text)
-        queries = parsed.get("queries") if parsed else None
-        if isinstance(queries, list) and queries:
-            return [str(q).strip() for q in queries if str(q).strip()][: settings.research_max_queries]
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_gemini_generate, system_prompt, topic, 250, 0.3)
+            raw_text = future.result(timeout=5.0)
+        result = _parse_queries(raw_text)
+        if result:
+            return result
     except Exception as exc:
-        logger.error("Gemini expand_queries fallback also failed: %s", exc)
+        logger.warning("Gemini expand_queries failed (%s); using template fallback.", exc)
 
-    return [topic]
+    # --- Instant template fallback — always works, zero latency ---
+    logger.info("expand_queries: using template fallback for topic '%s'.", topic)
+    return _template_queries(topic, n)
 
 
 def web_search(query: str, max_results: int) -> list[dict]:
@@ -425,7 +451,11 @@ def run_research_job(job_id: str, case_id: str, topic: str) -> None:
             doc_id = str(uuid.uuid4())
 
             # add_documents returns the chunk count — no need to re-chunk.
-            n_chunks = retriever.add_documents([(doc_id, display_title, text)])
+            try:
+                n_chunks = retriever.add_documents([(doc_id, display_title, text)])
+            except Exception as exc:
+                log(f"  skipped (indexing failed — {exc}): {display_title}")
+                continue
             database.save_document(case_id, doc_id, f"{display_title} (via research: {r['url']})", text, n_chunks)
 
             ingested_sources.append({"title": display_title, "text": text})
