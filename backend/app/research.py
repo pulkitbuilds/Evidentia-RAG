@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import json
 import logging
 import re
 import urllib.parse
 import uuid
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from bs4 import BeautifulSoup
@@ -11,7 +14,6 @@ from ddgs import DDGS
 from openai import OpenAI
 
 from app import database
-from app.chunking import chunk_document
 from app.config import settings
 from app.retrieval import get_retriever
 
@@ -257,12 +259,18 @@ def search_patents(query: str, max_results: int) -> list[dict]:
 
 def academic_search(query: str, max_results_per_source: int) -> list[dict]:
     """Runs arXiv + CrossRef + PatentsView for one query and merges results.
-    Each source is independently defensive (see above), so one archive being
-    down or changed never blocks the others."""
+    All three archives are queried in parallel; any single failure never blocks
+    the others.
+    """
+    fns = [search_arxiv, search_crossref, search_patents]
     results: list[dict] = []
-    results.extend(search_arxiv(query, max_results_per_source))
-    results.extend(search_crossref(query, max_results_per_source))
-    results.extend(search_patents(query, max_results_per_source))
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(fn, query, max_results_per_source) for fn in fns]
+        for f in futures:
+            try:
+                results.extend(f.result())
+            except Exception:
+                pass
     return results
 
 
@@ -334,9 +342,33 @@ def draft_from_evidence(topic: str, sources: list[dict]) -> str:
         return f"(Drafting failed: both NVIDIA and Gemini are unavailable — {exc})"
 
 
+def _search_one_query(q: str) -> list[dict]:
+    """Fan-out worker: web search + optional academic search for a single query."""
+    results = list(web_search(q, settings.research_results_per_query))
+    if settings.research_use_academic_archives:
+        results.extend(academic_search(q, settings.research_results_per_query))
+    return results
+
+
+def _fetch_candidate(r: dict) -> tuple[dict, str | None, str | None]:
+    """Fan-out worker: returns (original_record, title, text).
+    Uses direct_text for arXiv/patent abstracts; falls back to HTTP fetch."""
+    direct_text = r.get("direct_text")
+    if direct_text and len(direct_text) >= 200:
+        return r, r["title"], direct_text
+    title, text = fetch_readable_text(r["url"])
+    return r, title, text
+
+
 def run_research_job(job_id: str, case_id: str, topic: str) -> None:
     """The full pipeline. Runs synchronously -- called from a FastAPI
-    BackgroundTask, which Starlette automatically runs in a worker thread."""
+    BackgroundTask, which Starlette automatically runs in a worker thread.
+
+    Performance optimisations applied here:
+      1. All search queries run in parallel (ThreadPoolExecutor).
+      2. All URL fetches run in parallel.
+      3. add_documents() return value is used directly (no double-chunking).
+    """
     log = lambda msg: database.append_research_log(job_id, msg)  # noqa: E731
 
     try:
@@ -345,47 +377,55 @@ def run_research_job(job_id: str, case_id: str, topic: str) -> None:
         queries = expand_queries(topic)
         log("Queries: " + "; ".join(queries))
 
+        # --- Phase 1: Parallel search across all queries ---
         seen_urls: set[str] = set()
         candidates: list[dict] = []
-        for q in queries:
-            log(f"Searching: {q}")
-            found = list(web_search(q, settings.research_results_per_query))
-            if settings.research_use_academic_archives:
-                found.extend(academic_search(q, settings.research_results_per_query))
-            for r in found:
-                if r["url"] not in seen_urls:
-                    seen_urls.add(r["url"])
-                    candidates.append(r)
-            if len(candidates) >= settings.research_max_sources * 2:
-                break  # already have plenty of candidates to try fetching
+        log(f"Searching {len(queries)} queries in parallel…")
+        with ThreadPoolExecutor(max_workers=len(queries)) as pool:
+            futures = {pool.submit(_search_one_query, q): q for q in queries}
+            for future in as_completed(futures):
+                q = futures[future]
+                try:
+                    for r in future.result():
+                        if r["url"] not in seen_urls:
+                            seen_urls.add(r["url"])
+                            candidates.append(r)
+                except Exception as exc:
+                    log(f"Search failed for '{q}': {exc}")
+        log(f"Found {len(candidates)} unique candidate URLs.")
 
-        ingested_sources: list[dict] = []  # for the LLM draft step: {title, text}
-        source_records: list[dict] = []  # for the job result: {doc_id, title, url, source_type}
+        # Cap candidates before fetching to avoid unnecessary HTTP requests.
+        fetch_pool = candidates[: settings.research_max_sources * 2]
+
+        # --- Phase 2: Parallel URL fetching ---
+        log(f"Fetching up to {len(fetch_pool)} sources in parallel…")
+        fetched: list[tuple[dict, str | None, str | None]] = []
+        with ThreadPoolExecutor(max_workers=settings.research_max_sources) as pool:
+            futures_fetch = {pool.submit(_fetch_candidate, r): r for r in fetch_pool}
+            for future in as_completed(futures_fetch):
+                try:
+                    fetched.append(future.result())
+                except Exception:
+                    pass
+
+        # --- Phase 3: Ingest (sequential -- Chroma writes are not thread-safe here) ---
+        ingested_sources: list[dict] = []   # for the LLM draft step: {title, text}
+        source_records: list[dict] = []     # for the job result: {doc_id, title, url, source_type}
         retriever = get_retriever(case_id)
 
-        for r in candidates:
+        for r, title, text in fetched:
             if len(ingested_sources) >= settings.research_max_sources:
                 break
+            if not text:
+                log(f"  skipped (couldn't extract usable text): {r['url']}")
+                continue
 
             source_type = r.get("source_type", "web")
-            direct_text = r.get("direct_text")
-            if direct_text and len(direct_text) >= 200:
-                # arXiv/patent abstracts fetched from their own API -- more reliable
-                # than re-scraping the page, so skip the HTTP fetch entirely.
-                log(f"Using {source_type} abstract directly: {r['title']}")
-                title, text = r["title"], direct_text
-            else:
-                log(f"Fetching ({source_type}): {r['url']}")
-                title, text = fetch_readable_text(r["url"])
-                if not text:
-                    log(f"  skipped (couldn't extract usable text)")
-                    continue
-
-            display_title = title or r["title"] or r["url"]
+            display_title = title or r.get("title") or r["url"]
             doc_id = str(uuid.uuid4())
 
-            retriever.add_documents([(doc_id, display_title, text)])
-            n_chunks = len(chunk_document(doc_id, display_title, text, settings.max_chunk_sentences))
+            # add_documents returns the chunk count — no need to re-chunk.
+            n_chunks = retriever.add_documents([(doc_id, display_title, text)])
             database.save_document(case_id, doc_id, f"{display_title} (via research: {r['url']})", text, n_chunks)
 
             ingested_sources.append({"title": display_title, "text": text})

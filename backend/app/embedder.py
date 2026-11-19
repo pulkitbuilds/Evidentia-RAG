@@ -17,7 +17,7 @@ class LocalEmbedder:
         self._model = SentenceTransformer(model_name)
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return self._model.encode(texts, normalize_embeddings=True).tolist()
+        return self._model.encode(texts, normalize_embeddings=True, batch_size=64, show_progress_bar=False).tolist()
 
     def embed_query(self, text: str) -> list[float]:
         return self._model.encode([text], normalize_embeddings=True).tolist()[0]

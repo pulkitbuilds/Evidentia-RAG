@@ -85,7 +85,11 @@ class HybridRetriever:
             return len(all_chunks)
 
     def add_documents(self, documents: list[tuple[str, str, str]]) -> int:
-        """documents: list of (doc_id, title, text). Returns number of NEW chunks indexed."""
+        """documents: list of (doc_id, title, text). Returns number of NEW chunks indexed.
+
+        Incrementally upserts only the new chunks into Chroma (no re-embedding of
+        existing chunks) and rebuilds BM25 in memory over the full corpus.
+        """
         new_chunks: list[Chunk] = []
         for doc_id, title, text in documents:
             self._doc_titles[doc_id] = title
@@ -95,7 +99,18 @@ class HybridRetriever:
             return 0
 
         with self._lock:
-            self._reindex_chunks(self._chunks + new_chunks)
+            # Embed only the NEW chunks — not the entire corpus.
+            embeddings = self._embedder.embed_documents([c.text for c in new_chunks])
+            self._collection.upsert(
+                ids=[c.chunk_id for c in new_chunks],
+                documents=[c.text for c in new_chunks],
+                embeddings=embeddings,
+                metadatas=[{"doc_id": c.doc_id, "doc_title": c.doc_title} for c in new_chunks],
+            )
+            all_chunks = self._chunks + new_chunks
+            self._chunks = all_chunks
+            # BM25 is cheap (pure Python), so rebuild over the full set.
+            self._bm25 = BM25Okapi([_tokenize(c.text) for c in all_chunks])
 
         return len(new_chunks)
 

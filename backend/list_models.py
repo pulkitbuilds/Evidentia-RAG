@@ -1,6 +1,10 @@
-for gemini
 from openai import OpenAI
+import os
 
-c = OpenAI(api_key="", base_url="https://integrate.api.nvidia.com/v1")
+c = OpenAI(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+)
+
 for m in sorted(x.id for x in c.models.list().data):
     print(m)

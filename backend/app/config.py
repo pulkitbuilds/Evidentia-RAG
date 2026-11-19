@@ -12,15 +12,16 @@ class Settings(BaseSettings):
     # --- NVIDIA NIM (OpenAI-compatible) ---
     nvidia_api_key: str = ""
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
-    nvidia_model: str = "qwen/qwen2.5-coder-32b-instruct"
+    nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 
     # --- Gemini fallback (used when NVIDIA call fails) ---
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.8-flash"
 
     # --- Embeddings ---
-    embedding_provider: str = "nvidia"  # "local" (sentence-transformers) or "nvidia" (hosted, no PyTorch)
-    nvidia_embedding_model: str = "nvidia/nemotron-3.5-rerank-8b"  # used when provider=nvidia
+    embedding_provider: str = "local"  # "local" (sentence-transformers) or "nvidia" (hosted, no PyTorch)
+    embedding_model_name: str = "BAAI/bge-small-en-v1.5"  # used when provider=local
+    nvidia_embedding_model: str = "nvidia/nemotron-3.5-embed-1b"  # used when provider=nvidia
 
     # --- Storage ---
     chroma_persist_dir: str = "./data/chroma"
