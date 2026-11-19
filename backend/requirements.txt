@@ -12,3 +12,4 @@ beautifulsoup4>=4.12
 ddgs>=6.0
 PyJWT>=2.8
 psycopg[binary]>=3.1  # only used if DATABASE_URL points at Postgres
+sentence-transformers>=3.0
