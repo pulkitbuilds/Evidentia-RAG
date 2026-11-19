@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # --- Storage ---
     chroma_persist_dir: str = "./data/chroma"
     collection_name: str = "ragnarok_corpus"
-    database_url: str = "postgresql://postgres.xnpyavwkjspmrqlkffnb:AUbqfA%239NsU8kwR@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
+    database_url: str = "postgresql://postgres.xnpyavwkjspmrqlkffnb:SXP%3F5hdLfFeZHUG@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
 
     # --- Retrieval ---
     top_k: int = 5
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     research_max_sources: int = 6        # total pages to actually fetch + ingest, across all queries
     research_fetch_timeout: int = 15     # seconds, per page fetch
     research_max_chars_per_source: int = 6000  # truncate long pages before chunking/indexing
-    research_use_academic_archives: bool = True  # also query arXiv/CrossRef/PatentsView, not just web search
+    research_use_academic_archives: bool = False  # arXiv/CrossRef return DOI URLs that often can't be fetched; enable explicitly
 
     # --- Academic archive search (all optional; search works without these) ---
     crossref_mailto: str = ""  # set to your email to use CrossRef's faster "polite pool"
