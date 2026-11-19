@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-import concurrent.futures
 import json
 import re
 import urllib.parse
@@ -46,22 +43,10 @@ def _nvidia_client() -> OpenAI:
 
 
 def _parse_json_object(raw_text: str) -> dict | None:
-    cleaned = raw_text.strip()
-    # Strip markdown code fences if present
-    if "```" in cleaned:
-        match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned)
-        if match:
-            cleaned = match.group(1).strip()
+    cleaned = raw_text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
-        # Fallback regex extraction in case the model added conversational filler
-        match = re.search(r"\{[\s\S]*\}", cleaned)
-        if match:
-            try:
-                return json.loads(match.group(0))
-            except json.JSONDecodeError:
-                pass
         return None
 
 
@@ -90,7 +75,8 @@ def expand_queries(topic: str) -> list[str]:
 
 
 def web_search(query: str, max_results: int) -> list[dict]:
-    """Returns [{title, url, snippet, source_type}, ...]."""
+    """Returns [{title, url, snippet, source_type}, ...]. Swap this out for
+    another provider's SDK if you'd rather not depend on DuckDuckGo."""
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
@@ -112,7 +98,11 @@ _ARXIV_NS = {"atom": "http://www.w3.org/2005/Atom"}
 
 
 def search_arxiv(query: str, max_results: int) -> list[dict]:
-    """arXiv's public API -- free, no key, no rate-limit auth required for light use."""
+    """arXiv's public API -- free, no key, no rate-limit auth required for
+    light use. Returns results with the abstract already attached as
+    `direct_text`, since that's more reliable than re-scraping the abstract
+    page, and arXiv abstracts alone are often substantial enough to use as
+    evidence outright."""
     try:
         params = {
             "search_query": f"all:{query}",
@@ -155,7 +145,10 @@ def search_arxiv(query: str, max_results: int) -> list[dict]:
 
 
 def search_crossref(query: str, max_results: int) -> list[dict]:
-    """CrossRef's public works API. Uses crossref_mailto for the polite pool."""
+    """CrossRef's public works API -- free, no key. Covers journal articles
+    and a large share of conference papers (anything with a registered DOI).
+    Setting `crossref_mailto` in config gets you into CrossRef's faster
+    "polite pool"; it's optional."""
     try:
         params = {"query": query, "rows": max_results}
         if settings.crossref_mailto:
@@ -186,9 +179,12 @@ def search_crossref(query: str, max_results: int) -> list[dict]:
 
 
 def search_patents(query: str, max_results: int) -> list[dict]:
-    """US patent search via PatentsView. Skips immediately if no key is configured."""
-    if not settings.patentsview_api_key or not settings.patentsview_api_key.strip():
-        return []
+    """Best-effort US patent search via PatentsView. This API's access model
+    has shifted over time (it has moved between fully keyless and requiring
+    free registration), so this is deliberately defensive: any failure at
+    all -- wrong endpoint, auth required, format changed -- just returns an
+    empty list rather than breaking the research run. If you have a
+    PatentsView API key, set PATENTSVIEW_API_KEY in .env to use it."""
     try:
         query_json = json.dumps({"_text_any": {"patent_title": query}})
         fields_json = json.dumps(["patent_id", "patent_title", "patent_date", "patent_abstract"])
@@ -196,7 +192,9 @@ def search_patents(query: str, max_results: int) -> list[dict]:
             "https://search.patentsview.org/api/v1/patent/"
             f"?q={urllib.parse.quote(query_json)}&f={urllib.parse.quote(fields_json)}"
         )
-        headers = {"User-Agent": _USER_AGENT, "X-Api-Key": settings.patentsview_api_key.strip()}
+        headers = {"User-Agent": _USER_AGENT}
+        if settings.patentsview_api_key:
+            headers["X-Api-Key"] = settings.patentsview_api_key
         resp = requests.get(url, headers=headers, timeout=settings.research_fetch_timeout)
         if resp.status_code != 200:
             return []
@@ -224,25 +222,20 @@ def search_patents(query: str, max_results: int) -> list[dict]:
 
 
 def academic_search(query: str, max_results_per_source: int) -> list[dict]:
-    """Runs arXiv + CrossRef + PatentsView for one query concurrently in parallel."""
+    """Runs arXiv + CrossRef + PatentsView for one query and merges results.
+    Each source is independently defensive (see above), so one archive being
+    down or changed never blocks the others."""
     results: list[dict] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [
-            executor.submit(search_arxiv, query, max_results_per_source),
-            executor.submit(search_crossref, query, max_results_per_source),
-        ]
-        if settings.patentsview_api_key and settings.patentsview_api_key.strip():
-            futures.append(executor.submit(search_patents, query, max_results_per_source))
-        for f in concurrent.futures.as_completed(futures):
-            try:
-                results.extend(f.result())
-            except Exception:
-                pass
+    results.extend(search_arxiv(query, max_results_per_source))
+    results.extend(search_crossref(query, max_results_per_source))
+    results.extend(search_patents(query, max_results_per_source))
     return results
 
 
 def fetch_readable_text(url: str) -> tuple[str | None, str | None]:
-    """Fetches a URL and extracts readable body text."""
+    """Fetches a URL and extracts readable body text (paragraph tags, with
+    obvious boilerplate stripped). Returns (title, text) or (None, None) on
+    failure / too-thin content."""
     try:
         resp = requests.get(
             url, timeout=settings.research_fetch_timeout, headers={"User-Agent": _USER_AGENT}
@@ -264,16 +257,17 @@ def fetch_readable_text(url: str) -> tuple[str | None, str | None]:
         title = re.sub(r"\s+", " ", soup.title.string).strip()
 
     paragraphs = [re.sub(r"\s+", " ", p.get_text(" ", strip=True)) for p in soup.find_all("p")]
-    paragraphs = [p for p in paragraphs if len(p) > 40]
+    paragraphs = [p for p in paragraphs if len(p) > 40]  # drop nav crumbs / captions / boilerplate
     text = "\n".join(paragraphs)[: settings.research_max_chars_per_source]
 
-    if len(text) < 200:
+    if len(text) < 200:  # too thin to be useful evidence
         return None, None
     return title, text
 
 
 def draft_from_evidence(topic: str, sources: list[dict]) -> str:
-    """Returns a short grounded draft paragraph using the LLM."""
+    """sources: [{title, text}, ...] (already-ingested pages). Returns a short
+    grounded draft paragraph, or a fallback message if drafting fails."""
     if not sources:
         return "No usable sources were found to draft from."
 
@@ -295,7 +289,8 @@ def draft_from_evidence(topic: str, sources: list[dict]) -> str:
 
 
 def run_research_job(job_id: str, case_id: str, topic: str) -> None:
-    """The full pipeline. Runs in a FastAPI BackgroundTask worker thread."""
+    """The full pipeline. Runs synchronously -- called from a FastAPI
+    BackgroundTask, which Starlette automatically runs in a worker thread."""
     log = lambda msg: database.append_research_log(job_id, msg)  # noqa: E731
 
     try:
@@ -306,54 +301,41 @@ def run_research_job(job_id: str, case_id: str, topic: str) -> None:
 
         seen_urls: set[str] = set()
         candidates: list[dict] = []
-
-        def search_for_query(q: str) -> list[dict]:
+        for q in queries:
             log(f"Searching: {q}")
-            res = list(web_search(q, settings.research_results_per_query))
+            found = list(web_search(q, settings.research_results_per_query))
             if settings.research_use_academic_archives:
-                res.extend(academic_search(q, settings.research_results_per_query))
-            return res
+                found.extend(academic_search(q, settings.research_results_per_query))
+            for r in found:
+                if r["url"] not in seen_urls:
+                    seen_urls.add(r["url"])
+                    candidates.append(r)
+            if len(candidates) >= settings.research_max_sources * 2:
+                break  # already have plenty of candidates to try fetching
 
-        # Run all search queries concurrently in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(queries), 4) or 1) as executor:
-            query_futures = [executor.submit(search_for_query, q) for q in queries]
-            for future in concurrent.futures.as_completed(query_futures):
-                try:
-                    found = future.result()
-                    for r in found:
-                        if r["url"] not in seen_urls:
-                            seen_urls.add(r["url"])
-                            candidates.append(r)
-                except Exception:
-                    pass
-                if len(candidates) >= settings.research_max_sources * 2:
-                    break
-
-        ingested_sources: list[dict] = []
-        source_records: list[dict] = []
+        ingested_sources: list[dict] = []  # for the LLM draft step: {title, text}
+        source_records: list[dict] = []  # for the job result: {doc_id, title, url, source_type}
         retriever = get_retriever(case_id)
 
-        candidates_to_process = candidates[: settings.research_max_sources * 2]
-
-        def resolve_candidate(r: dict) -> tuple[dict, str | None, str | None]:
-            direct_text = r.get("direct_text")
-            if direct_text and len(direct_text) >= 200:
-                return r, r["title"], direct_text
-            t, txt = fetch_readable_text(r["url"])
-            return r, t, txt
-
-        # Fetch candidate web pages concurrently in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            resolved_results = list(executor.map(resolve_candidate, candidates_to_process))
-
-        for r, title, text in resolved_results:
+        for r in candidates:
             if len(ingested_sources) >= settings.research_max_sources:
                 break
-            if not text:
-                continue
 
             source_type = r.get("source_type", "web")
-            display_title = title or r.get("title") or r["url"]
+            direct_text = r.get("direct_text")
+            if direct_text and len(direct_text) >= 200:
+                # arXiv/patent abstracts fetched from their own API -- more reliable
+                # than re-scraping the page, so skip the HTTP fetch entirely.
+                log(f"Using {source_type} abstract directly: {r['title']}")
+                title, text = r["title"], direct_text
+            else:
+                log(f"Fetching ({source_type}): {r['url']}")
+                title, text = fetch_readable_text(r["url"])
+                if not text:
+                    log(f"  skipped (couldn't extract usable text)")
+                    continue
+
+            display_title = title or r["title"] or r["url"]
             doc_id = str(uuid.uuid4())
 
             retriever.add_documents([(doc_id, display_title, text)])
@@ -382,6 +364,6 @@ def run_research_job(job_id: str, case_id: str, topic: str) -> None:
         database.update_research_job(job_id, status="done", draft_text=draft, sources=source_records)
         log("Done.")
 
-    except Exception as exc:
+    except Exception as exc:  # last-resort safety net so a job never hangs at "running" forever
         database.update_research_job(job_id, status="error", error=str(exc))
         log(f"Failed: {exc}")
