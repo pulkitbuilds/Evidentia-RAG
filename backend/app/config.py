@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # --- NVIDIA NIM (OpenAI-compatible) ---
     nvidia_api_key: str = ""
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
-    nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    nvidia_model: str = "meta/llama-3.1-8b-instruct"
 
     # --- Embeddings ---
     embedding_provider: str = "nvidia"  # "local" (sentence-transformers) or "nvidia" (hosted, no PyTorch)
