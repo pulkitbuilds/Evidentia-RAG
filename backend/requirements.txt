@@ -3,7 +3,6 @@ uvicorn[standard]>=0.30
 pydantic>=2.7
 pydantic-settings>=2.3
 chromadb>=0.5
-sentence-transformers>=3.0
 rank-bm25>=0.2.2
 openai>=1.40
 sqlalchemy>=2.0
